@@ -18,6 +18,12 @@ mount -t overlay -o upperdir=/tmp/etco/etcu,workdir=/tmp/etco/etcw,lowerdir=/etc
 umount /tmp/etco
 rmdir /tmp/etco
 
+# swap
+if [ -n "${vmwrap_swap:-}" ]; then
+  mkswap $vmwrap_swap
+  swapon $vmwrap_swap
+fi
+
 # confugure network
 hostname $(cat /etc/hostname)
 ifconfig lo up
@@ -28,7 +34,12 @@ rm -f /etc/resolv.conf
 echo nameserver 10.0.2.3 > /etc/resolv.conf
 
 # cgroup
-mount -t cgroup2 -o nsdelegate cgroup /sys/fs/cgroup
-echo "+cpu +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control
-mkdir /sys/fs/cgroup/delegated
-echo $vmwrap_pid > /sys/fs/cgroup/delegated/cgroup.procs
+# mount -t cgroup2 -o nsdelegate cgroup /sys/fs/cgroup
+# echo "+cpu +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control
+# mkdir /sys/fs/cgroup/delegated
+# chown $vmwrap_uid:$vmwrap_gid \
+#   /sys/fs/cgroup/delegated \
+#   /sys/fs/cgroup/delegated/cgroup.subtree_control \
+#   /sys/fs/cgroup/delegated/cgroup.procs \
+#   /sys/fs/cgroup/delegated/cgroup.threads
+# echo $vmwrap_pid > /sys/fs/cgroup/delegated/cgroup.procs

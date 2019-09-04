@@ -11,7 +11,7 @@
 #include <errno.h>
 static char **decode_vec(const unsigned char *s);
 
-int main(int argc, char **argv) {
+int main() {
 
   const char *path;
   pid_t pid;
@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         while ((init_pid != wait(&status)));
 
         if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-      	  fputs("Init script failed", stderr);
+         fputs("Init script failed\n", stderr);
 	  exit(EXIT_FAILURE);
         }
       }
