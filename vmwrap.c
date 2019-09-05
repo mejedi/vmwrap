@@ -12,6 +12,9 @@
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
+#include <pwd.h>
+#include <grp.h>
+#include <stdbool.h>
 
 struct config;
 static void write_init_args(
@@ -26,12 +29,16 @@ struct config {
   const char *init_path;
   const char *kernel_path;
 
+  bool explicit_gid;
+  uid_t uid;
+  gid_t gid;
   char **argv;
 };
 
 enum {
   HELP_OPT = 1000, VERSION_OPT, CPU_COUNT_OPT,
   MEMORY_SIZE_OPT, SWAP_OPT, INIT_PATH_OPT,
+  USER_OPT, GROUP_OPT,
 };
 
 long parse_size(const char *string, char **p) {
@@ -58,6 +65,8 @@ static int get_next_option(
     { "memory", required_argument, NULL, MEMORY_SIZE_OPT },
     { "swap", required_argument, NULL, SWAP_OPT },
     { "init", required_argument, NULL, INIT_PATH_OPT },
+    { "user", required_argument, NULL, USER_OPT },
+    { "group", required_argument, NULL, GROUP_OPT },
     { NULL }
   };
   int index, opt = getopt_long_only(argc, argv, "", options, &index);
@@ -86,6 +95,38 @@ static int get_next_option(
   case INIT_PATH_OPT:
     config->init_path = optarg;
     break;
+  case USER_OPT:
+    {
+      struct passwd *pw = getpwnam(optarg);
+      if (pw) {
+	config->uid = pw->pw_uid;
+	if (!config->explicit_gid) config->gid = pw->pw_gid;
+	break;
+      }
+      char *p;
+      errno = 0;
+      long v = strtol(optarg, &p, 10);
+      if (p == optarg || *p || errno || v < 0 || v != (long)(uid_t)v)
+        goto invalid_argument;
+      config->uid = (uid_t)v;
+      break;
+    }
+  case GROUP_OPT:
+    {
+      config->explicit_gid = true;
+      struct group *gr = getgrnam(optarg);
+      if (gr) {
+        config->gid = gr->gr_gid;
+	break;
+      }
+      char *p;
+      errno = 0;
+      long v = strtol(optarg, &p, 10);
+      if (p == optarg || *p || errno || v < 0 || v != (long)(gid_t)v)
+        goto invalid_argument;
+      config->gid = (gid_t)v;
+      break;
+    }
   }
   return opt;
 invalid_argument:
@@ -110,7 +151,9 @@ int main(int argc, char **argv) {
 
   struct config config = {
     .init_path = "/root/init.sh",
-    .kernel_path = "/root/bzImage"
+    .kernel_path = "/root/bzImage",
+    .uid = geteuid(),
+    .gid = getegid()
   };
 
   int rv;
@@ -265,9 +308,9 @@ static void write_init_args(
 
   fprintf(init_args_file, "vmwrap_init=%s", config->init_path);
   fputc(0, init_args_file);
-  fprintf(init_args_file, "vmwrap_uid=%d", (int)geteuid());
+  fprintf(init_args_file, "vmwrap_uid=%d", (int)config->uid);
   fputc(0, init_args_file);
-  fprintf(init_args_file, "vmwrap_gid=%d", (int)getegid());
+  fprintf(init_args_file, "vmwrap_gid=%d", (int)config->gid);
   fputc(0, init_args_file);
   fprintf(init_args_file, "vmwrap_cwd=%s", get_current_dir_name());
   fputc(0, init_args_file);
