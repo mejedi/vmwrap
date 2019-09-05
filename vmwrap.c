@@ -15,6 +15,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <stdbool.h>
+#include "b64.h"
 
 struct config;
 static void write_init_args(
@@ -321,8 +322,7 @@ static void write_init_args(
 }
 
 static char *encode_vec(char **v) {
-  static const char enc[65] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  static const char enc[65] = B64_ENC;
   size_t sz = 0, b64;
   char **i;
   unsigned char *buf, *o;

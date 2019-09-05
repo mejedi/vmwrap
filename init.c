@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include "b64.h"
 static char **decode_vec(const unsigned char *s);
 
 int main() {
@@ -145,8 +146,7 @@ static char **decode_vec(const unsigned char *s) {
   unsigned char *buf, *ebuf, *p;
   char **v;
   if (!dec['a']) {
-    static const char enc[65] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const char enc[65] = B64_ENC;
     for (int i = 0; enc[i]; ++i) dec[enc[i]] = i;
   }
   if (!s) return NULL;
