@@ -14,9 +14,6 @@ static char **decode_vec(const unsigned char *s);
 
 int main() {
 
-  const char *path;
-  pid_t pid;
-
   /* Mount root filesystem */
   mkdir("/rootfs", 0700);
 
@@ -32,6 +29,7 @@ int main() {
   chroot(".");
 
   /* Expand the environment from vmwrap_file */
+  const char *path;
   if ((path = getenv("vmwrap_file"))) {
     int fd;
     struct stat st;
@@ -69,25 +67,22 @@ int main() {
    *
    * Since the pid is exposed, the init script might put the process into the
    * proper cgroup. It is up to the init script how to set up cgroups. */
+  pid_t pid;
   switch ((pid = fork())) {
   case -1:
     perror("fork");
     return EXIT_FAILURE;
   case 0:
     {
-      char env_pid[sizeof("vmwrap_pid=12345678")];
-      pid_t init_pid;
-      const char *init_script;
-      int status;
-      const char *cwd, *uid, *gid;
-      char **argv;
-
       /* Expose pid via vmwrap_pid environment variable */
+      char env_pid[sizeof("vmwrap_pid=12345678")];
       sprintf(env_pid, "vmwrap_pid=%d", (int)getpid());
       putenv(env_pid);
 
       /* Run init script */
+      const char *init_script;
       if ((init_script = getenv("vmwrap_init"))) {
+        pid_t init_pid;
         switch ((init_pid = fork())) {
         case -1:
           perror("fork");
@@ -98,6 +93,7 @@ int main() {
           return EXIT_FAILURE;
         }
 
+        int status;
         while ((init_pid != wait(&status)));
 
         if (!WIFEXITED(status) || WEXITSTATUS(status)) {
@@ -107,20 +103,27 @@ int main() {
       }
 
       /* Commence vmwrap-ped task */
+      const char *cwd;
       if ((cwd = getenv("vmwrap_cwd"))) {
 	if (chdir(cwd) == -1) {
 	  fprintf(stderr, "Changing to %s: %s\n", cwd, strerror(errno));
 	  return EXIT_FAILURE;
 	}
       }
+
+      const char *gid;
       if ((gid = getenv("vmwrap_gid"))) setgid(strtol(gid, NULL, 10));
+
+      const char *uid;
       if ((uid = getenv("vmwrap_uid"))) setuid(strtol(uid, NULL, 10));
-      argv = decode_vec(getenv("vmwrap_argv"));
+
+      char **argv = decode_vec(getenv("vmwrap_argv"));
       if (!argv || !argv[0]) {
 	static char sh[] = "/bin/sh";
         static char *argv_sh[] = { sh, NULL };
 	argv = argv_sh;
       }
+
       execvpe(argv[0], argv, decode_vec(getenv("vmwrap_env")));
       fprintf(stderr, "Exec %s: %s\n", argv[0], strerror(errno));
       return EXIT_FAILURE;

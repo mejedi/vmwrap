@@ -9,6 +9,8 @@ mount -t tmpfs tmp /tmp
 mount -t tmpfs run /run
 mkdir /dev/shm -m1777
 mount -t tmpfs shm /dev/shm
+mkdir /dev/pts
+mount -t devpts devpts /dev/pts
 
 # setup /etc overlay
 mkdir /tmp/etco
