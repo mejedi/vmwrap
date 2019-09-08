@@ -1,20 +1,23 @@
 #define _GNU_SOURCE
+#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/prctl.h>
-#include <unistd.h>
-#include <signal.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <getopt.h>
+#include <arpa/inet.h>
 #include <errno.h>
-#include <limits.h>
 #include <fcntl.h>
-#include <pwd.h>
+#include <getopt.h>
 #include <grp.h>
+#include <limits.h>
+#include <netinet/in.h>
+#include <pwd.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include "b64.h"
 
 struct config;
@@ -34,15 +37,23 @@ struct config {
   uid_t uid;
   gid_t gid;
   char **argv;
+
+  struct {
+    int protocol;
+    struct in_addr host_addr;
+    unsigned short host_port;
+    unsigned short guest_port;
+  } expose_port;
+
 };
 
 enum {
   HELP_OPT = 1000, VERSION_OPT, CPU_COUNT_OPT,
   MEMORY_SIZE_OPT, SWAP_OPT, INIT_PATH_OPT,
-  USER_OPT, GROUP_OPT,
+  USER_OPT, GROUP_OPT, EXPOSE_PORT_OPT
 };
 
-long parse_size(const char *string, char **p) {
+static long parse_size(const char *string, char **p) {
   errno = 0;
   long result = strtol(string, p, 10), k = 1;
   switch (**p) {
@@ -58,21 +69,74 @@ long parse_size(const char *string, char **p) {
   return result * k;
 }
 
+static bool parse_port(const char *s, unsigned short *port) {
+  errno = 0;
+  char *p;
+  long val = strtol(s, &p, 10);
+  *port = htons((unsigned short)val);
+  return p != s && !*p && !errno
+    && val > 0 && (long)(unsigned short)val == val;
+}
+
 static int get_next_option(
   int argc, char **argv, struct config *config
 ) {
   static const struct option options[] = {
+    { "help", no_argument, NULL, HELP_OPT },
+    { "version", no_argument, NULL, VERSION_OPT },
     { "cpus", required_argument, NULL, CPU_COUNT_OPT },
     { "memory", required_argument, NULL, MEMORY_SIZE_OPT },
     { "swap", required_argument, NULL, SWAP_OPT },
     { "init", required_argument, NULL, INIT_PATH_OPT },
     { "user", required_argument, NULL, USER_OPT },
     { "group", required_argument, NULL, GROUP_OPT },
+    { "expose", required_argument, NULL, EXPOSE_PORT_OPT },
+    { "port", required_argument, NULL, EXPOSE_PORT_OPT },
     { NULL }
   };
+  bool dashdash = argv[optind] && argv[optind][1] == '-';
   int index, opt = getopt_long_only(argc, argv, "", options, &index);
   char *p;
   switch (opt) {
+  case HELP_OPT:
+    fprintf(
+      stdout,
+/*     123456789 123456789 123456789 123456789 123456789 123456789 123456789 1*/
+      "Usage: %s [OPTIONS]... [COMMAND [ARG]...]\n"
+      "Run COMMAND in a Linux virtual machine.\n"
+      "\n"
+      "Host filesystem is shared with the VM.  COMMAND starts in the current\n"
+      "host working directory and environment variables are initialized from\n"
+      "the host environment.\n"
+      "\n"
+      "Mandatory arguments to long options are mandatory for short options too.\n"
+      "  -c, --cpus NUMBER       number of virtual CPUs\n"
+      "  -m, --memory SIZE       size of virtual RAM\n"
+      "  -s, --swap SIZE[,PATH]  swap file for the VM;\n"
+      "                          optional PATH specifies a directory; a temporary\n"
+      "                          file is created in that directory's filesystem\n"
+      "  -u, --user USER         run COMMAND as USER\n"
+      "  -g, --group GROUP       run COMMAND with the primary group set to GROUP\n"
+      "  -p, --expose [HOST_ADDR:][HOST_PORT:]GUEST_PORT[/tcp|/udp]\n"
+      "                          tcp or udp port forwarding\n"
+      "  -i, --init PATH         replace stock init script; it runs as root in VM\n"
+      "                          prior to COMMAND and configures the OS (mounts\n"
+      "                          filesystems, brings the network up, enables swap)\n"
+      "      --help              display this help and exit\n"
+      "      --version           output version information and exit\n"
+      "\n"
+      "The SIZE argument is an integer and optional unit (example: 10K is 10*1024).\n"
+      "Units are K,M,G (powers of 1024).\n",
+      program_invocation_name
+    );
+    break;
+  case VERSION_OPT:
+    fputs(
+      "vmwrap 1.0\n"
+      "Report bugs at https://github.com/rapidlua/vmwrap/issues.\n",
+      stdout
+    );
+    break;
   case CPU_COUNT_OPT:
     errno = 0;
     config->cpu_count = strtol(optarg, &p, 10);
@@ -128,15 +192,59 @@ static int get_next_option(
       config->gid = (gid_t)v;
       break;
     }
+  case EXPOSE_PORT_OPT:
+    {
+       /* Docker syntax: 127.0.0.1:80:8080/tcp
+	* i.e. [<host_addr>:][<host_port>:]<guest_port>[/<protocol>] */
+       char *copy = strdup(optarg), *p = copy, *tok;
+       tok = strsep(&p, ":");
+       if (p && strchr(tok, '.')
+         && inet_aton(tok, &config->expose_port.host_addr)
+       )
+         tok = strsep(&p, ":");
+       else
+	 config->expose_port.host_addr.s_addr = ntohl(INADDR_LOOPBACK);
+
+       char *host_port, *guest_port;
+       if (p) {
+         host_port = tok;
+	 guest_port = strsep(&p, "/");
+       } else
+         host_port = guest_port = strsep(&tok, "/");
+
+       if (!parse_port(host_port, &config->expose_port.host_port)
+         || !parse_port(guest_port, &config->expose_port.guest_port)
+       ) goto invalid_argument;
+
+       if (!p || !strcmp(p, "tcp"))
+	 config->expose_port.protocol = IPPROTO_TCP;
+       else if (!strcmp(p, "udp"))
+	 config->expose_port.protocol = IPPROTO_UDP;
+       else
+	 goto invalid_argument;
+
+       free(copy);
+       break;
+    }
+
+invalid_argument:
+    fprintf(
+      stderr,
+      "%s: invalid argument for option '%s%s': '%s'\n",
+      program_invocation_name,
+      "--" + !dashdash, options[index].name, optarg
+    );
+    /* fallthrough */
+
+  case '?':
+    fprintf(
+      stderr, "Try '%s --help' for more information.\n",
+      program_invocation_name
+    );
+    return '?';
   }
   return opt;
-invalid_argument:
-  fprintf(
-    stderr,
-    "%s: invalid argument for option '-%s': '%s'\n",
-    program_invocation_name, options[index].name, optarg
-  );
-  return '?';
+
 }
 
 static void append(const char **args, const char *arg) {
@@ -177,6 +285,10 @@ int main(int argc, char **argv) {
     case '?':
       rv = EXIT_FAILURE;
       goto cleanup;
+    case HELP_OPT:
+    case VERSION_OPT:
+      rv = EXIT_SUCCESS;
+      goto cleanup;
     }
   }
   config.argv = argv + optind;
@@ -196,8 +308,6 @@ int main(int argc, char **argv) {
     "-initrd", "/root/initrd",
     "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/",
     "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs",
-    "-netdev", "user,id=netdev0,ipv6=off",
-    "-device", "virtio-net-pci,netdev=netdev0",
 
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
@@ -258,6 +368,48 @@ int main(int argc, char **argv) {
     fputc(0, init_args_file);
   }
 
+  /* Network */
+  fputs("vmwrap_addr=10.0.2.15", init_args_file);
+  fputc(0, init_args_file);
+  fputs("vmwrap_gateway=10.0.2.2", init_args_file);
+  fputc(0, init_args_file);
+  fputs("vmwrap_dns=10.0.2.3", init_args_file);
+  fputc(0, init_args_file);
+
+  char *netdev_args; size_t netdev_args_size;
+  FILE *netdev_args_file;
+  if (!(netdev_args_file = open_memstream(&netdev_args, &netdev_args_size))) {
+    rv = EXIT_FAILURE;
+    goto cleanup_file;
+  }
+
+  fputs("user,id=netdev0,ipv6=off", netdev_args_file);
+
+  optind = 1;
+  while ((opt = get_next_option(argc, argv, &config)) != -1) {
+    if (opt == EXPOSE_PORT_OPT) {
+      fprintf(
+	netdev_args_file, ",hostfwd=%s:%s:%d-:%d",
+	config.expose_port.protocol == IPPROTO_TCP ? "tcp" : "udp",
+	inet_ntoa(config.expose_port.host_addr),
+	ntohs(config.expose_port.host_port),
+	ntohs(config.expose_port.guest_port)
+      );
+    }
+  }
+
+  if (fclose(netdev_args_file) != 0) {
+    perror("fclose");
+    rv = EXIT_FAILURE;
+    goto cleanup_file;
+  }
+
+  append(qemu_cmd, "-netdev");
+  append(qemu_cmd, netdev_args);
+  append(qemu_cmd, "-device");
+  append(qemu_cmd, "virtio-net-pci,netdev=netdev0");
+
+  /* Done with init_args_file */
   if (fclose(init_args_file) != 0) {
     perror("fclose");
     rv = EXIT_FAILURE;
@@ -265,6 +417,7 @@ int main(int argc, char **argv) {
   }
   init_args_file = NULL;
 
+  /* Done with kernel_args_file */
   fprintf(kernel_args_file, " vmwrap_file=%s", init_args_file_path);
   if (fclose(kernel_args_file) != 0) {
     perror("fclose");

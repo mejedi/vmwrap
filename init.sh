@@ -29,11 +29,11 @@ fi
 # confugure network
 hostname $(cat /etc/hostname)
 ifconfig lo up
-ifconfig eth0 10.0.2.10
+ifconfig eth0 $vmwrap_addr
 ifconfig eth0 up
-ip route add default via 10.0.2.2 dev eth0
+ip route add default via $vmwrap_gateway dev eth0
 rm -f /etc/resolv.conf
-echo nameserver 10.0.2.3 > /etc/resolv.conf
+echo nameserver $vmwrap_dns > /etc/resolv.conf
 
 # cgroup
 # mount -t cgroup2 -o nsdelegate cgroup /sys/fs/cgroup
