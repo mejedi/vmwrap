@@ -60,6 +60,15 @@ int main() {
     }
   }
 
+  /* Change working directory */
+  const char *cwd;
+  if ((cwd = getenv("vmwrap_cwd"))) {
+    if (chdir(cwd) == -1) {
+      fprintf(stderr, "Changing to %s: %s\n", cwd, strerror(errno));
+      return EXIT_FAILURE;
+    }
+  }
+
   /* Start the process that's going to run vmwrap-ped task.
    * The process waits for the init script to complete
    * before commencing execution. The pid is exposed via vmwrap_pid
@@ -103,12 +112,12 @@ int main() {
       }
 
       /* Commence vmwrap-ped task */
-      const char *cwd;
-      if ((cwd = getenv("vmwrap_cwd"))) {
-	if (chdir(cwd) == -1) {
-	  fprintf(stderr, "Changing to %s: %s\n", cwd, strerror(errno));
-	  return EXIT_FAILURE;
-	}
+      if (cwd) {
+	/* chdir again - current dir might be wrong due to new mounts */
+        if (chdir(cwd) == -1) {
+          fprintf(stderr, "Changing to %s: %s\n", cwd, strerror(errno));
+          return EXIT_FAILURE;
+        }
       }
 
       const char *gid;
