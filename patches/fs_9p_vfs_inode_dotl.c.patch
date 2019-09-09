@@ -1,0 +1,23 @@
+--- linux-5.2.5/fs/9p/vfs_inode_dotl.c	2019-07-31 05:25:04.000000000 +0000
++++ fs/9p/vfs_inode_dotl.c	2019-09-08 21:39:11.099000000 +0000
+@@ -179,7 +179,19 @@
+ 		{ O_LARGEFILE,	P9_DOTL_LARGEFILE },
+ 		{ O_DIRECTORY,	P9_DOTL_DIRECTORY },
+ 		{ O_NOFOLLOW,	P9_DOTL_NOFOLLOW },
+-		{ O_NOATIME,	P9_DOTL_NOATIME },
++		/* vmwrap: O_NOATIME is troublesome since only file owner or
++		 * CAP_FOWNER bearer is permitted to open a file with this flag.
++		 * QEMU process is typically run by an unprivileged user; hence open
++		 * with O_NOATIME is destined to fail on a 9P filesystem shared
++		 * with the host.
++		 *
++		 * When a file is opened in overlayfs, the filesystem locates
++		 * the file in a layer and calls open with O_NOATIME on the
++		 * underlying filesystem.
++		 *
++		 * This crude "fix" makes it possible to use a host-shared 9P as
++		 * a layer in overlayfs when QEMU runs unprivileged. */
++		/* { O_NOATIME,	P9_DOTL_NOATIME }, */
+ 		{ O_CLOEXEC,	P9_DOTL_CLOEXEC },
+ 		{ O_SYNC,	P9_DOTL_SYNC},
+ 	};
