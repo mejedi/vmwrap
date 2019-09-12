@@ -25,8 +25,16 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  chdir("/rootfs");
-  chroot(".");
+  /* Mimic switch_root command;
+   * chroot into /rootfs alone would render user namespaces unusable;
+   * clone(CLONE_NEWUSER) fails with EPERM in a chroot environment */
+  if(chdir("/rootfs") != 0
+    || mount("/rootfs", "/", NULL, MS_MOVE, NULL) != 0
+    || chroot(".") != 0
+  ) {
+    perror("switch_root");
+    return EXIT_FAILURE;
+  }
 
   /* Expand the environment from vmwrap_file */
   const char *path;
