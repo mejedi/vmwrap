@@ -403,6 +403,7 @@ int main(int argc, char **argv) {
     rv = EXIT_FAILURE;
     goto cleanup_file;
   }
+  netdev_args_file = NULL;
 
   append(qemu_cmd, "-netdev");
   append(qemu_cmd, netdev_args);
