@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     goto cleanup;
   }
 
-  fputs("console=ttyS0 panic=-1 vmwrap_mount=rootfs", kernel_args_file);
+  fputs("console=hvc0 panic=-1 vmwrap_mount=rootfs", kernel_args_file);
 
   /* Parse command arguments */
   int opt;
@@ -299,13 +299,15 @@ int main(int argc, char **argv) {
 #else
 #error Unknown arch
 #endif
-    "-nographic",
+    "-nodefaults", "-nographic", "-monitor", "none",
     "-no-reboot",
-    "-enable-kvm",
-    "-serial", "mon:stdio",
     "-cpu", "host",
+    "-machine", "q35,accel=kvm",
     "-kernel", config.kernel_path,
     "-initrd", "/root/initrd",
+    "-device", "virtio-serial,max_ports=2",
+    "-chardev", "stdio,id=stdio",
+    "-device", "virtconsole,chardev=stdio",
     "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/",
     "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs",
 
