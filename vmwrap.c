@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <pwd.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -29,6 +30,7 @@ struct config {
   long cpu_count;
   long mem_size;
   long swap_size;
+  const char *mem_path;
   const char *swap_path;
   const char *init_path;
   const char *kernel_path;
@@ -53,20 +55,26 @@ enum {
   USER_OPT, GROUP_OPT, EXPOSE_PORT_OPT
 };
 
-static long parse_size(const char *string, char **p) {
+static bool parse_mem_spec(const char *s, long *size, const char **path) {
   errno = 0;
-  long result = strtol(string, p, 10), k = 1;
-  switch (**p) {
+  char *p;
+  long result = strtol(s, &p, 10), k = 1;
+  switch (*p) {
   case 'k': case 'K':
-    k = 1024; ++*p; break;
+    k = 1024; ++p; break;
   case 'm': case 'M':
-    k = 1024 * 1024; ++*p;  break;
+    k = 1024 * 1024; ++p;  break;
   case 'g': case 'G':
-    k = 1024 * 1024 * 1024; ++*p; break;
+    k = 1024 * 1024 * 1024; ++p; break;
   }
-  if (result <= 0 || result > LONG_MAX / k || errno || *p == string)
-    *p = NULL;
-  return result * k;
+  if (result <= 0 || result > LONG_MAX / k || errno || p == s)
+    return false;
+  *size = result * k;
+  if (*p == ',') {
+    *path = p + 1;
+    return true;
+  }
+  return !*p;
 }
 
 static bool parse_port(const char *s, unsigned short *port) {
@@ -111,10 +119,11 @@ static int get_next_option(
       "\n"
       "Mandatory arguments to long options are mandatory for short options too.\n"
       "  -c, --cpus NUMBER       number of virtual CPUs\n"
-      "  -m, --memory SIZE       size of virtual RAM\n"
+      "  -m, --memory SIZE[,PATH]\n"
+      "                          size of virtual RAM; allocate memory from a\n"
+      "                          temporary file in PATH (example: -m 1G,/hugepages)\n"
       "  -s, --swap SIZE[,PATH]  swap file for the VM;\n"
-      "                          optional PATH specifies a directory; a temporary\n"
-      "                          file is created in that directory's filesystem\n"
+      "                          a temporary swap file is created in PATH\n"
       "  -u, --user USER         run COMMAND as USER\n"
       "  -g, --group GROUP       run COMMAND with the primary group set to GROUP\n"
       "  -p, --expose [HOST_ADDR:][HOST_PORT:]GUEST_PORT[/tcp|/udp]\n"
@@ -144,17 +153,13 @@ static int get_next_option(
       goto invalid_argument;
     break;
   case MEMORY_SIZE_OPT:
-    config->mem_size = parse_size(optarg, &p);
-    if (!p || *p) goto invalid_argument;
+    config->mem_path = NULL;
+    if (!parse_mem_spec(optarg, &config->mem_size, &config->mem_path))
+      goto invalid_argument;
     break;
   case SWAP_OPT:
-    config->swap_size = parse_size(optarg, &p);
-    if (!p) goto invalid_argument;
-    if (*p==',')
-      config->swap_path = p + 1;
-    else if (!*p)
-      config->swap_path = "/var";
-    else
+    config->swap_path = "/var";
+    if (!parse_mem_spec(optarg, &config->swap_size, &config->swap_path))
       goto invalid_argument;
     break;
   case INIT_PATH_OPT:
@@ -256,6 +261,17 @@ static void append(const char **args, const char *arg) {
   *args = arg;
 }
 
+static char *printfstr(const char *fmt, ...)
+  __attribute__((__format__(__printf__, 1, 2)));
+
+static char *printfstr(const char *fmt, ...) {
+  va_list ap;
+  char *res;
+  va_start(ap, fmt);
+  vasprintf(&res, fmt, ap);
+  return res;
+}
+
 int main(int argc, char **argv) {
 
   struct config config = {
@@ -313,6 +329,8 @@ int main(int argc, char **argv) {
 
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 
     ""
   };
@@ -331,17 +349,21 @@ int main(int argc, char **argv) {
   write_init_args(init_args_file, &config);
 
   if (config.cpu_count) {
-    static char count[32];
-    snprintf(count, sizeof count, "%ld", config.cpu_count);
     append(qemu_cmd, "-smp");
-    append(qemu_cmd, count);
+    append(qemu_cmd, printfstr("%ld", config.cpu_count));
   }
 
+  enum {
+    FDSET_SWAP = 100
+  };
+
   if (config.mem_size) {
-    static char size[32];
-    snprintf(size, sizeof size, "%ldM", config.mem_size / 1024 / 1024);
     append(qemu_cmd, "-m");
-    append(qemu_cmd, size);
+    append(qemu_cmd, printfstr("%ldM", config.mem_size / 1024 / 1024));
+    if (config.mem_path) {
+      append(qemu_cmd, "-mem-path");
+      append(qemu_cmd, config.mem_path);
+    }
   }
 
   if (config.swap_size) {
@@ -358,14 +380,13 @@ int main(int argc, char **argv) {
       rv = EXIT_FAILURE;
       goto cleanup_file;
     }
-    static char add_fd[64];
-    snprintf(add_fd, sizeof(add_fd), "fd=%d,set=2", fd);
     append(qemu_cmd, "-add-fd");
-    append(qemu_cmd, add_fd);
+    append(qemu_cmd, printfstr("fd=%d,set=%d", fd, FDSET_SWAP));
     append(qemu_cmd, "-drive");
-    append(qemu_cmd, "driver=raw,file.filename=/dev/fdset/2"
-      ",index=1,if=virtio,file.cache.direct=on"
-    );
+    append(qemu_cmd, printfstr(
+      "driver=raw,file.filename=/dev/fdset/%d"
+      ",index=1,if=virtio,file.cache.direct=on", FDSET_SWAP
+    ));
     fputs("vmwrap_swap=/dev/vda", init_args_file);
     fputc(0, init_args_file);
   }
