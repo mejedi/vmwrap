@@ -147,7 +147,21 @@ int main() {
     }
   }
 
-  while ((pid != wait(NULL)));
+  /* Wait for task to complete and report status */
+  int status;
+  while ((pid != wait(&status)));
+  const char *task_status_path;
+  if ((task_status_path = getenv("vmwrap_task_status"))) {
+    int fd = open(task_status_path, O_WRONLY | O_NONBLOCK);
+    if (fd == -1) {
+      fprintf(stderr, "Open '%s': %s\n", task_status_path, strerror(errno));
+    } else {
+      char buf[8];
+      int len = sprintf(
+        buf, "%d\n", WIFEXITED(status) ? WEXITSTATUS(status) : EXIT_FAILURE);
+      if (len > 0) write(fd, buf, len);
+    }
+  }
 
   /* Terminate the VM */
   sync();

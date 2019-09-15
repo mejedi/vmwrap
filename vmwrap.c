@@ -273,6 +273,15 @@ static char *printfstr(const char *fmt, ...) {
   return res;
 }
 
+enum {
+  FDSET_SWAP = 100,
+  FDSET_TASK_STATUS
+};
+
+enum {
+  VPORT_TASK_STATUS = 1
+};
+
 int main(int argc, char **argv) {
 
   struct config config = {
@@ -354,10 +363,6 @@ int main(int argc, char **argv) {
     append(qemu_cmd, printfstr("%ld", config.cpu_count));
   }
 
-  enum {
-    FDSET_SWAP = 100
-  };
-
   if (config.mem_size) {
     append(qemu_cmd, "-m");
     append(qemu_cmd, printfstr("%ldM", config.mem_size / 1024 / 1024));
@@ -434,6 +439,33 @@ int main(int argc, char **argv) {
   append(qemu_cmd, "-device");
   append(qemu_cmd, "virtio-net-pci,netdev=netdev0");
 
+  /* Task status: expose a pipe as a character device in the guest, let guest
+   * send the task status via the pipe.
+   * Caveat:
+   *   1) exposing a socketpair works but a plain pipe is refused by QEMU;
+   *   2) don't 2 shutdown() either socket or write() in guest will hang. */
+  int status_pipe[2];
+
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, status_pipe) != 0) {
+    perror("socketpair");
+    rv = EXIT_FAILURE;
+    goto cleanup_file;
+  }
+
+  append(qemu_cmd, "-add-fd");
+  append(qemu_cmd, printfstr(
+    "fd=%d,set=%d", status_pipe[1], FDSET_TASK_STATUS));
+  append(qemu_cmd, "-chardev");
+  append(qemu_cmd, printfstr(
+    "pipe,path=/dev/fdset/%d,id=task_status", FDSET_TASK_STATUS));
+  append(qemu_cmd, "-device");
+  append(qemu_cmd, printfstr(
+    "virtserialport,chardev=task_status,nr=%d", VPORT_TASK_STATUS));
+
+  fprintf(
+    init_args_file, "vmwrap_task_status=/dev/vport0p%d", VPORT_TASK_STATUS);
+  fputc(0, init_args_file);
+
   /* Done with init_args_file */
   if (fclose(init_args_file) != 0) {
     perror("fclose");
@@ -467,11 +499,13 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  /* Wait for VM to terminate and extract task status. */
+  close(status_pipe[1]); status_pipe[1] = -1;
+  while ((pid != wait(NULL)));
+  FILE *status_file = fdopen(status_pipe[0], "r");
   int status;
-  while ((pid != wait(&status)));
-
-  rv = WIFEXITED(status) && WEXITSTATUS(status) == 0
-  ? EXIT_SUCCESS : EXIT_FAILURE;
+  rv = status_file && fscanf(status_file, "%d", &status) == 1
+    ? status : EXIT_FAILURE;
 
 cleanup_file:
   unlink(init_args_file_path);
