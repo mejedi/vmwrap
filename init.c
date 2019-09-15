@@ -114,14 +114,14 @@ int main() {
         while ((init_pid != wait(&status)));
 
         if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-         fputs("Init script failed\n", stderr);
-	  exit(EXIT_FAILURE);
+          fputs("Init script failed\n", stderr);
+          exit(EXIT_FAILURE);
         }
       }
 
       /* Commence vmwrap-ped task */
       if (cwd) {
-	/* chdir again - current dir might be wrong due to new mounts */
+        /* chdir again - current dir might be wrong due to new mounts */
         if (chdir(cwd) == -1) {
           fprintf(stderr, "Changing to %s: %s\n", cwd, strerror(errno));
           return EXIT_FAILURE;
@@ -136,9 +136,9 @@ int main() {
 
       char **argv = decode_vec(getenv("vmwrap_argv"));
       if (!argv || !argv[0]) {
-	static char sh[] = "/bin/sh";
+        static char sh[] = "/bin/sh";
         static char *argv_sh[] = { sh, NULL };
-	argv = argv_sh;
+        argv = argv_sh;
       }
 
       execvpe(argv[0], argv, decode_vec(getenv("vmwrap_env")));

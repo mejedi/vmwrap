@@ -170,9 +170,9 @@ static int get_next_option(
     {
       struct passwd *pw = getpwnam(optarg);
       if (pw) {
-	config->uid = pw->pw_uid;
-	if (!config->explicit_gid) config->gid = pw->pw_gid;
-	break;
+        config->uid = pw->pw_uid;
+        if (!config->explicit_gid) config->gid = pw->pw_gid;
+        break;
       }
       char *p;
       errno = 0;
@@ -188,7 +188,7 @@ static int get_next_option(
       struct group *gr = getgrnam(optarg);
       if (gr) {
         config->gid = gr->gr_gid;
-	break;
+        break;
       }
       char *p;
       errno = 0;
@@ -201,7 +201,7 @@ static int get_next_option(
   case EXPOSE_PORT_OPT:
     {
        /* Docker syntax: 127.0.0.1:80:8080/tcp
-	* i.e. [<host_addr>:][<host_port>:]<guest_port>[/<protocol>] */
+        * i.e. [<host_addr>:][<host_port>:]<guest_port>[/<protocol>] */
        char *copy = strdup(optarg), *p = copy, *tok;
        tok = strsep(&p, ":");
        if (p && strchr(tok, '.')
@@ -209,12 +209,12 @@ static int get_next_option(
        )
          tok = strsep(&p, ":");
        else
-	 config->expose_port.host_addr.s_addr = ntohl(INADDR_LOOPBACK);
+         config->expose_port.host_addr.s_addr = ntohl(INADDR_LOOPBACK);
 
        char *host_port, *guest_port;
        if (p) {
          host_port = tok;
-	 guest_port = strsep(&p, "/");
+         guest_port = strsep(&p, "/");
        } else
          host_port = guest_port = strsep(&tok, "/");
 
@@ -223,11 +223,11 @@ static int get_next_option(
        ) goto invalid_argument;
 
        if (!p || !strcmp(p, "tcp"))
-	 config->expose_port.protocol = IPPROTO_TCP;
+         config->expose_port.protocol = IPPROTO_TCP;
        else if (!strcmp(p, "udp"))
-	 config->expose_port.protocol = IPPROTO_UDP;
+         config->expose_port.protocol = IPPROTO_UDP;
        else
-	 goto invalid_argument;
+         goto invalid_argument;
 
        free(copy);
        break;
@@ -380,8 +380,8 @@ int main(int argc, char **argv) {
     ) {
       fprintf(
         stderr,
-	"Creating swap file at %s: %s\n",
-	config.swap_path, strerror(errno)
+        "Creating swap file at %s: %s\n",
+        config.swap_path, strerror(errno)
       );
       rv = EXIT_FAILURE;
       goto cleanup_file;
@@ -418,11 +418,11 @@ int main(int argc, char **argv) {
   while ((opt = get_next_option(argc, argv, &config)) != -1) {
     if (opt == EXPOSE_PORT_OPT) {
       fprintf(
-	netdev_args_file, ",hostfwd=%s:%s:%d-:%d",
-	config.expose_port.protocol == IPPROTO_TCP ? "tcp" : "udp",
-	inet_ntoa(config.expose_port.host_addr),
-	ntohs(config.expose_port.host_port),
-	ntohs(config.expose_port.guest_port)
+        netdev_args_file, ",hostfwd=%s:%s:%d-:%d",
+        config.expose_port.protocol == IPPROTO_TCP ? "tcp" : "udp",
+        inet_ntoa(config.expose_port.host_addr),
+        ntohs(config.expose_port.host_port),
+        ntohs(config.expose_port.guest_port)
       );
     }
   }
