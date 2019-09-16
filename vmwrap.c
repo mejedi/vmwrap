@@ -103,7 +103,7 @@ static int get_next_option(
     { NULL }
   };
   bool dashdash = argv[optind] && argv[optind][1] == '-';
-  int index, opt = getopt_long_only(argc, argv, "", options, &index);
+  int index, opt = getopt_long_only(argc, argv, "+", options, &index);
   char *p;
   switch (opt) {
   case HELP_OPT:
