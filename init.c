@@ -19,7 +19,7 @@ int main() {
 
   if (mount(
       getenv("vmwrap_mount"),
-      "/rootfs", "9p", 0, "trans=virtio") != 0
+      "/rootfs", "9p", 0, "trans=virtio,loose") != 0
   ) {
     perror("mount");
     return EXIT_FAILURE;
