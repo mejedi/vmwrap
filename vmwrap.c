@@ -299,8 +299,8 @@ enum {
 int main(int argc, char **argv) {
 
   struct config config = {
-    .init_path = "/root/init.sh",
-    .kernel_path = "/root/bzImage",
+    .init_path = "/usr/lib/vmwrap/init.sh",
+    .kernel_path = "/usr/lib/vmwrap/kernel/default",
     .uid = geteuid(),
     .gid = getegid()
   };
@@ -344,7 +344,7 @@ int main(int argc, char **argv) {
     "-cpu", "host",
     "-machine", "q35,accel=kvm",
     "-kernel", config.kernel_path,
-    "-initrd", "/root/initrd",
+    "-initrd", "/usr/lib/vmwrap/initrd",
     "-device", "virtio-serial,max_ports=2",
     "-chardev", "stdio,id=stdio",
     "-device", "virtconsole,chardev=stdio",

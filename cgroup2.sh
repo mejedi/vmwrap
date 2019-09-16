@@ -1,5 +1,5 @@
 #!/bin/sh
-. ./init.sh
+. /usr/lib/vmwrap/init.sh
 
 # cgroup2
 mount -t cgroup2 -o nsdelegate cgroup /sys/fs/cgroup

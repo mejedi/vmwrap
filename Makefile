@@ -12,3 +12,10 @@ initrd: init
 init: init.c
 	${CC} ${CFLAGS} init.c -o init
 	strip init
+
+install:
+	install -d ${DESTDIR}/usr/bin
+	install vmwrap ${DESTDIR}/usr/bin
+	install -d ${DESTDIR}/usr/lib/vmwrap
+	install init.sh cgroup2.sh initrd ${DESTDIR}/usr/lib/vmwrap
+	install -d ${DESTDIR}/usr/lib/vmwrap/kernel
