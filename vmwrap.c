@@ -253,13 +253,27 @@ invalid_argument:
 
 }
 
-static void append(const char **args, const char *arg) {
-  while (*args) ++args;
-  if (args[1]) {
-    fputs("Too many arguments", stderr);
+enum {
+  CMDLINE_MAX = 127
+};
+
+struct cmdline {
+  size_t length;
+  const char *args[CMDLINE_MAX];
+  const char *sentinel;
+};
+
+#define CMDLINE_INIT(...) { \
+  .length = sizeof((const char*[]){ __VA_ARGS__ }) / sizeof(char *), \
+  .args = { __VA_ARGS__ } \
+}
+
+static void append(struct cmdline *cmdline, const char *arg) {
+  if (cmdline->length >= CMDLINE_MAX) {
+    fputs("Too many arguments\n", stderr);
     exit(EXIT_FAILURE);
   }
-  *args = arg;
+  cmdline->args[cmdline->length++] = arg;
 }
 
 static char *printfstr(const char *fmt, ...)
@@ -319,7 +333,7 @@ int main(int argc, char **argv) {
   }
   config.argv = argv + optind;
 
-  const char *qemu_cmd[] = {
+  struct cmdline qemu_cmd = CMDLINE_INIT(
 #ifdef __x86_64__
     "qemu-system-x86_64",
 #else
@@ -335,15 +349,8 @@ int main(int argc, char **argv) {
     "-chardev", "stdio,id=stdio",
     "-device", "virtconsole,chardev=stdio",
     "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/",
-    "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs",
-
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-
-    ""
-  };
+    "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs"
+  );
 
   /* Due to the size limit, we write most of the init process arguments
    * to a temporary file; the path passed as a kernel argument. */
@@ -359,16 +366,16 @@ int main(int argc, char **argv) {
   write_init_args(init_args_file, &config);
 
   if (config.cpu_count) {
-    append(qemu_cmd, "-smp");
-    append(qemu_cmd, printfstr("%ld", config.cpu_count));
+    append(&qemu_cmd, "-smp");
+    append(&qemu_cmd, printfstr("%ld", config.cpu_count));
   }
 
   if (config.mem_size) {
-    append(qemu_cmd, "-m");
-    append(qemu_cmd, printfstr("%ldM", config.mem_size / 1024 / 1024));
+    append(&qemu_cmd, "-m");
+    append(&qemu_cmd, printfstr("%ldM", config.mem_size / 1024 / 1024));
     if (config.mem_path) {
-      append(qemu_cmd, "-mem-path");
-      append(qemu_cmd, config.mem_path);
+      append(&qemu_cmd, "-mem-path");
+      append(&qemu_cmd, config.mem_path);
     }
   }
 
@@ -386,10 +393,10 @@ int main(int argc, char **argv) {
       rv = EXIT_FAILURE;
       goto cleanup_file;
     }
-    append(qemu_cmd, "-add-fd");
-    append(qemu_cmd, printfstr("fd=%d,set=%d", fd, FDSET_SWAP));
-    append(qemu_cmd, "-drive");
-    append(qemu_cmd, printfstr(
+    append(&qemu_cmd, "-add-fd");
+    append(&qemu_cmd, printfstr("fd=%d,set=%d", fd, FDSET_SWAP));
+    append(&qemu_cmd, "-drive");
+    append(&qemu_cmd, printfstr(
       "driver=raw,file.filename=/dev/fdset/%d"
       ",index=1,if=virtio,file.cache.direct=on", FDSET_SWAP
     ));
@@ -434,10 +441,10 @@ int main(int argc, char **argv) {
   }
   netdev_args_file = NULL;
 
-  append(qemu_cmd, "-netdev");
-  append(qemu_cmd, netdev_args);
-  append(qemu_cmd, "-device");
-  append(qemu_cmd, "virtio-net-pci,netdev=netdev0");
+  append(&qemu_cmd, "-netdev");
+  append(&qemu_cmd, netdev_args);
+  append(&qemu_cmd, "-device");
+  append(&qemu_cmd, "virtio-net-pci,netdev=netdev0");
 
   /* Task status: expose a pipe as a character device in the guest, let guest
    * send the task status via the pipe.
@@ -452,14 +459,14 @@ int main(int argc, char **argv) {
     goto cleanup_file;
   }
 
-  append(qemu_cmd, "-add-fd");
-  append(qemu_cmd, printfstr(
+  append(&qemu_cmd, "-add-fd");
+  append(&qemu_cmd, printfstr(
     "fd=%d,set=%d", status_pipe[1], FDSET_TASK_STATUS));
-  append(qemu_cmd, "-chardev");
-  append(qemu_cmd, printfstr(
+  append(&qemu_cmd, "-chardev");
+  append(&qemu_cmd, printfstr(
     "pipe,path=/dev/fdset/%d,id=task_status", FDSET_TASK_STATUS));
-  append(qemu_cmd, "-device");
-  append(qemu_cmd, printfstr(
+  append(&qemu_cmd, "-device");
+  append(&qemu_cmd, printfstr(
     "virtserialport,chardev=task_status,nr=%d", VPORT_TASK_STATUS));
 
   fprintf(
@@ -483,8 +490,8 @@ int main(int argc, char **argv) {
   }
   kernel_args_file = NULL;
 
-  append(qemu_cmd, "-append");
-  append(qemu_cmd, kernel_args);
+  append(&qemu_cmd, "-append");
+  append(&qemu_cmd, kernel_args);
 
   pid_t pid;
   switch((pid = fork())) {
@@ -494,8 +501,8 @@ int main(int argc, char **argv) {
     goto cleanup;
   case 0:
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
-    execvp(qemu_cmd[0], (char **)qemu_cmd);
-    perror(qemu_cmd[0]);
+    execvp(qemu_cmd.args[0], (char **)qemu_cmd.args);
+    perror(qemu_cmd.args[0]);
     return EXIT_FAILURE;
   }
 
