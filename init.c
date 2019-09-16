@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/reboot.h>
@@ -7,6 +8,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <errno.h>
 #include "b64.h"
@@ -171,9 +173,9 @@ int main() {
    *
    * Assume VM exits on reboot (QEMU: -no-reboot), required to prevent
    * VM from spinning indefinitely on kernel panic. */
-  reboot(LINUX_REBOOT_CMD_RESTART);
+  reboot(RB_AUTOBOOT);
 }
- 
+
 static char **decode_vec(const unsigned char *s) {
   static unsigned char dec[256];
   size_t len;
