@@ -549,11 +549,11 @@ static char *encode_vec(char **v) {
   b64 = (sz + 2)/3;
   if (!(buf = malloc(4 * b64 + 3))) return NULL;
   for (o = buf, i = v; *i; ++i) {
-    size_t len = strlen(*i) + 1;
-    memcpy(o, *i, len);
-    o += len;
+    size_t len = strlen(*i);
+    memcpy(o, *i, len + 1);
+    o += len + 1;
   }
-  memset(o, 0, 3);
+  o[0] = o[1] = 0;
   o = buf + b64 * 4;
   while (b64--) {
     unsigned a = buf[b64 * 3], b = buf[b64 * 3 + 1], c = buf[b64 * 3 + 2];
@@ -570,5 +570,6 @@ static char *encode_vec(char **v) {
     o[-1] = '=';
     break;
   }
+  *o = 0;
   return buf;
 }
