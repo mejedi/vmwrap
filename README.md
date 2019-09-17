@@ -8,7 +8,7 @@ $ vmwrap uname -r
 
 Spawns Linux VM (KVM/QEMU + the custom minimal 3MiB kernel) and invokes a command.
 
-No need to setup a VM image — host filesystem is exposed to the guest.
+No need to setup a VM image — host filesystem is shared with the guest.
 This is supposed to be mostly drop-in compatible:
 current environment is passed to the command;
 command runs in the current working directory;
