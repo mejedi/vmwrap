@@ -16,7 +16,3 @@ vmwrap exits with the same status as the command.
 
 # Building
 It comes with a Dockerfile.
-
-# Caveats
-Should be considered a prototype;
-there are still [major issues](https://github.com/rapidlua/vmwrap/issues?utf8=✓&q=is%3Aissue+is%3Aopen+label%3Ablocker) unresolved.

@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
     "-device", "virtio-serial,max_ports=2",
     "-chardev", "stdio,id=stdio",
     "-device", "virtconsole,chardev=stdio",
-    "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/",
+    "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/,multidevs=remap",
     "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs"
   );
 
