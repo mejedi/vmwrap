@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
     goto cleanup;
   }
 
-  fputs("console=hvc0 panic=-1 vmwrap_mount=rootfs", kernel_args_file);
+  fputs("console=hvc0 panic=-1 vmwrap_mount=rootfs quiet", kernel_args_file);
 
   /* Parse command arguments */
   int opt;
