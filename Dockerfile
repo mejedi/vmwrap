@@ -6,6 +6,7 @@ RUN cd /root/linux-5.2.5 && make -j $(nproc)
 COPY patches /root/linux-5.2.5/patches
 RUN cd /root/linux-5.2.5 && \
     patch -si patches/fs_9p_vfs_inode_dotl.c.patch fs/9p/vfs_inode_dotl.c && \
+    patch -si patches/kernel_reboot.c.patch kernel/reboot.c && \
     make -j $(nproc)
 COPY . /root/vmwrap
 RUN cd /root/vmwrap \

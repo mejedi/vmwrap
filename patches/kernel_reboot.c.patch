@@ -1,0 +1,16 @@
+--- kernel/reboot.c
++++ /root/reboot.c
+@@ -246,10 +246,13 @@
+ 	kernel_restart_prepare(cmd);
+ 	migrate_to_reboot_cpu();
+ 	syscore_shutdown();
++/* vmwrap: reboot used to terminate VM, silence it */
++#if 0
+ 	if (!cmd)
+ 		pr_emerg("Restarting system\n");
+ 	else
+ 		pr_emerg("Restarting system with command '%s'\n", cmd);
++#endif
+ 	kmsg_dump(KMSG_DUMP_SHUTDOWN);
+ 	machine_restart(cmd);
+ }
