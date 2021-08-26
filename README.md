@@ -3,7 +3,7 @@ Hustle-free command line tool to invoke any command in a VM.
 
 ```
 $ vmwrap uname -r
-5.2.5-vmwrap
+5.12.1-vmwrap
 ```
 
 Spawns Linux VM (KVM/QEMU + the custom minimal 3MiB kernel) and invokes a command.
