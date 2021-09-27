@@ -40,6 +40,8 @@ struct config {
   gid_t gid;
   char **argv;
 
+  int no_kvm;
+
   struct {
     int protocol;
     struct in_addr host_addr;
@@ -52,7 +54,7 @@ struct config {
 enum {
   HELP_OPT = 1000, VERSION_OPT, CPU_COUNT_OPT,
   MEMORY_SIZE_OPT, SWAP_OPT, INIT_PATH_OPT,
-  USER_OPT, GROUP_OPT, EXPOSE_PORT_OPT
+  USER_OPT, GROUP_OPT, EXPOSE_PORT_OPT, NO_KVM_OPT
 };
 
 static bool parse_mem_spec(const char *s, long *size, const char **path) {
@@ -100,6 +102,7 @@ static int get_next_option(
     { "group", required_argument, NULL, GROUP_OPT },
     { "expose", required_argument, NULL, EXPOSE_PORT_OPT },
     { "port", required_argument, NULL, EXPOSE_PORT_OPT },
+    { "no-kvm", no_argument, NULL, NO_KVM_OPT },
     { NULL }
   };
   bool dashdash = argv[optind] && argv[optind][1] == '-';
@@ -118,6 +121,7 @@ static int get_next_option(
       "the host environment.\n"
       "\n"
       "Mandatory arguments to long options are mandatory for short options too.\n"
+      "      --no-kvm            use software emulation instead of kvm\n"
       "  -c, --cpus NUMBER       number of virtual CPUs\n"
       "  -m, --memory SIZE[,PATH]\n"
       "                          size of virtual RAM; allocate memory from\n"
@@ -232,6 +236,9 @@ static int get_next_option(
        free(copy);
        break;
     }
+  case NO_KVM_OPT:
+    config->no_kvm = 1;
+    break;
 
 invalid_argument:
     fprintf(
@@ -341,8 +348,6 @@ int main(int argc, char **argv) {
 #endif
     "-nodefaults", "-nographic", "-monitor", "none",
     "-no-reboot",
-    "-cpu", "host",
-    "-machine", "q35,accel=kvm",
     "-kernel", config.kernel_path,
     "-initrd", "/usr/lib/vmwrap/initrd",
     "-device", "virtio-serial,max_ports=2",
@@ -351,6 +356,18 @@ int main(int argc, char **argv) {
     "-fsdev", "local,security_model=passthrough,id=fsdev0,path=/,multidevs=remap",
     "-device", "virtio-9p-pci,fsdev=fsdev0,mount_tag=rootfs"
   );
+
+  if (config.no_kvm) {
+    append(&qemu_cmd, "-cpu");
+    append(&qemu_cmd, "max");
+    append(&qemu_cmd, "-machine");
+    append(&qemu_cmd, "q35,accel=tcg");
+  } else {
+    append(&qemu_cmd, "-cpu");
+    append(&qemu_cmd, "host");
+    append(&qemu_cmd, "-machine");
+    append(&qemu_cmd, "q35,accel=kvm");
+  }
 
   /* Due to the size limit, we write most of the init process arguments
    * to a temporary file; the path passed as a kernel argument. */
