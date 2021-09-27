@@ -52,9 +52,17 @@ struct config {
 };
 
 enum {
-  HELP_OPT = 1000, VERSION_OPT, CPU_COUNT_OPT,
-  MEMORY_SIZE_OPT, SWAP_OPT, INIT_PATH_OPT,
-  USER_OPT, GROUP_OPT, EXPOSE_PORT_OPT, NO_KVM_OPT
+  CPU_COUNT_OPT = 'c',
+  MEMORY_SIZE_OPT = 'm',
+  SWAP_OPT = 's',
+  INIT_PATH_OPT = 'i',
+  USER_OPT = 'u',
+  GROUP_OPT = 'g',
+  EXPOSE_PORT_OPT = 'p',
+
+  HELP_OPT = 1000,
+  VERSION_OPT = 1001,
+  NO_KVM_OPT = 1002,
 };
 
 static bool parse_mem_spec(const char *s, long *size, const char **path) {
@@ -105,8 +113,8 @@ static int get_next_option(
     { "no-kvm", no_argument, NULL, NO_KVM_OPT },
     { NULL }
   };
-  bool dashdash = argv[optind] && argv[optind][1] == '-';
-  int index, opt = getopt_long_only(argc, argv, "+", options, &index);
+  int index = -1;
+  int opt = getopt_long(argc, argv, "+c:m:s:i:u:g:p:", options, &index);
   char *p;
   switch (opt) {
   case HELP_OPT:
@@ -243,9 +251,11 @@ static int get_next_option(
 invalid_argument:
     fprintf(
       stderr,
-      "%s: invalid argument for option '%s%s': '%s'\n",
+      "%s: invalid argument for option '-%c%s': '%s'\n",
       program_invocation_name,
-      "--" + !dashdash, options[index].name, optarg
+      index >= 0 ? '-' : (char)opt,
+      index >= 0 ?  options[index].name : "",
+      optarg
     );
     /* fallthrough */
 
